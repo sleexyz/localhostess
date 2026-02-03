@@ -104,11 +104,11 @@ export async function scanServers(): Promise<Server[]> {
 
   for (const [pid, ports] of pidPorts) {
     const env = await getProcessEnv(pid);
-    const name = env["LOCALHOST_NAME"];
+    const name = env["VHOST"];
 
     if (DEBUG) {
-      const hasLocalhost = name ? `LOCALHOST_NAME=${name}` : "no LOCALHOST_NAME";
-      console.log(`[scan] PID ${pid} ports=${ports.join(",")} ${hasLocalhost}`);
+      const hasVhost = name ? `VHOST=${name}` : "no VHOST";
+      console.log(`[scan] PID ${pid} ports=${ports.join(",")} ${hasVhost}`);
     }
 
     if (name) {
@@ -147,14 +147,14 @@ export async function buildMapping(): Promise<Map<string, number>> {
 
 // CLI: run directly to test scanning
 if (import.meta.main) {
-  console.log("Scanning for servers with LOCALHOST_NAME...\n");
+  console.log("Scanning for servers with VHOST...\n");
 
   const servers = await scanServers();
 
   if (servers.length === 0) {
-    console.log("No servers found with LOCALHOST_NAME env var.");
+    console.log("No servers found with VHOST env var.");
     console.log("\nTry starting a server with:");
-    console.log('  LOCALHOST_NAME=test bun -e "Bun.serve({port: 4567, fetch: () => new Response(\'hello\')})"');
+    console.log('  VHOST=test bun -e "Bun.serve({port: 4567, fetch: () => new Response(\'hello\')})"');
   } else {
     console.log("Found servers:\n");
     for (const server of servers) {

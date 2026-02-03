@@ -94,9 +94,9 @@ async function renderDashboard(): Promise<Response> {
 
   if (servers.length === 0) {
     html += `
-  <p class="empty">No servers found with LOCALHOST_NAME env var.</p>
+  <p class="empty">No servers found with VHOST env var.</p>
   <p>Start a server with:</p>
-  <pre><code>LOCALHOST_NAME=myapp bun run server.ts</code></pre>
+  <pre><code>VHOST=myapp bun run server.ts</code></pre>
 `;
   } else {
     html += `<h2>Active Services</h2>`;
@@ -148,7 +148,7 @@ async function handleRequest(req: Request): Promise<Response> {
 // Start server
 console.log(`localhost-world listening on http://localhost:${PORT}`);
 console.log(`Dashboard: http://localhost:${PORT}`);
-console.log(`\nStart services with: LOCALHOST_NAME=myapp bun run server.ts`);
+console.log(`\nStart services with: VHOST=myapp bun run server.ts`);
 
 Bun.serve({
   port: PORT,

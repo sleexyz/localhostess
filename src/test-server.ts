@@ -1,13 +1,13 @@
 /**
- * Simple test server - run with LOCALHOST_NAME to test routing
+ * Simple test server - run with VHOST to test routing
  *
  * Usage:
- *   LOCALHOST_NAME=test bun run src/test-server.ts
- *   LOCALHOST_NAME=test PORT=4567 bun run src/test-server.ts
+ *   VHOST=test bun run src/test-server.ts
+ *   VHOST=test PORT=4567 bun run src/test-server.ts
  */
 
 const PORT = parseInt(process.env.PORT || "4567", 10);
-const NAME = process.env.LOCALHOST_NAME || "unnamed";
+const NAME = process.env.VHOST || "unnamed";
 
 Bun.serve({
   port: PORT,

@@ -14,12 +14,12 @@ localhost:8080  # api? docs?
 
 ## The Solution
 
-Set `LOCALHOST_NAME` when starting any server:
+Set `VHOST` when starting any server:
 
 ```bash
-LOCALHOST_NAME=frontend bun run dev
-LOCALHOST_NAME=api node server.js
-LOCALHOST_NAME=docs python -m http.server
+VHOST=frontend bun run dev
+VHOST=api node server.js
+VHOST=docs python -m http.server
 ```
 
 Access them at:
@@ -47,10 +47,10 @@ just install
 
 ## Usage
 
-Start any server with `LOCALHOST_NAME`:
+Start any server with `VHOST`:
 
 ```bash
-LOCALHOST_NAME=myapp bun run server.ts
+VHOST=myapp bun run server.ts
 # Now accessible at http://myapp.localhost:9999
 ```
 
@@ -82,11 +82,11 @@ You don't need to coordinate ports across projects. Every project can default to
 ```bash
 # Project A uses port 3000
 cd ~/projects/frontend
-LOCALHOST_NAME=frontend bun run dev  # starts on :3000
+VHOST=frontend bun run dev  # starts on :3000
 
 # Project B also wants port 3000? Just use a different one, who cares
 cd ~/projects/api
-LOCALHOST_NAME=api bun run dev  # starts on :3001
+VHOST=api bun run dev  # starts on :3001
 
 # Access by name, not port
 http://frontend.localhost:9999  # → :3000
@@ -98,14 +98,14 @@ The port is an implementation detail. You never need to remember it.
 ## How It Works
 
 1. Daemon listens on port 9999
-2. On each request, scans for processes with `LOCALHOST_NAME` env var
+2. On each request, scans for processes with `VHOST` env var
 3. Matches subdomain to process, finds its listening port
 4. Proxies the request
 
 ```
 Request: frontend.localhost:9999
     ↓
-Daemon finds process with LOCALHOST_NAME=frontend
+Daemon finds process with VHOST=frontend
     ↓
 That process is listening on :3000
     ↓
