@@ -95,6 +95,13 @@ http://api.localhost:9999       # → :3001
 
 The port is an implementation detail. You never need to remember it.
 
+> **TIP:** Set `PORT=0` and your application will get a random available port from the OS. Since localhostess routes by name, you'll never have collisions:
+> ```bash
+> NAME=frontend PORT=0 bun run dev
+> NAME=api PORT=0 bun run dev
+> # Both start on random ports, both accessible by name
+> ```
+
 ## How It Works
 
 1. Daemon listens on port 9999
