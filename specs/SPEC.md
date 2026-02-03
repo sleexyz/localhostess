@@ -65,7 +65,7 @@ http://db.localhost
 
 ### 3. Mapping Strategies (in priority order)
 1. **Explicit config**: User-defined mappings in `~/.localhost-world/config.yaml`
-2. **Environment variable**: Process has `VHOST=myapp` or `DOMAIN=myapp`
+2. **Environment variable**: Process has `NAME=myapp` or `DOMAIN=myapp`
 3. **Project detection**: Infer from package.json name, directory name, etc.
 4. **Port-based fallback**: `p3000.localhost` → port 3000
 
@@ -125,7 +125,7 @@ From `ps -Eww` we can extract:
 - `npm_package_name` — package name (set by npm/bun)
 - `DIRENV_DIR` — project root (if using direnv)
 - `npm_lifecycle_script` — the actual script being run
-- Custom: `VHOST` — explicit override
+- Custom: `NAME` — explicit override
 
 ### Proof of Concept Output
 
@@ -235,7 +235,7 @@ mappings:
     strip_prefix: false
 
 # Environment variable to check for domain name
-env_var: VHOST
+env_var: NAME
 
 # Fallback to port-based subdomains (p3000.localhost)
 port_subdomains: true

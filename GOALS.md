@@ -7,9 +7,9 @@ A macOS daemon that routes `*.localhost:9999` to local services based on environ
 Any application can start a server with:
 
 ```bash
-VHOST=paper node server.js
+NAME=paper node server.js
 # or
-VHOST=api bun run dev
+NAME=api bun run dev
 ```
 
 And it becomes accessible at:
@@ -29,7 +29,7 @@ No matter what port the service actually binds to.
 │                   (daemon on :9999)                      │
 ├─────────────────────────────────────────────────────────┤
 │                                                         │
-│  1. Scans running processes for VHOST=xxx      │
+│  1. Scans running processes for NAME=xxx      │
 │  2. Finds what port each process is listening on        │
 │  3. Routes xxx.localhost:9999 → localhost:<port>        │
 │                                                         │
@@ -42,7 +42,7 @@ Request flow:
 
 ## Core Contract
 
-- **Env var**: `VHOST=<subdomain>`
+- **Env var**: `NAME=<subdomain>`
 - **Daemon port**: `9999` (configurable)
 - **Routing**: `<subdomain>.localhost:9999` → process's actual port
 
@@ -79,14 +79,14 @@ Options:
 
 ### Other questions
 
-- **Conflict resolution**: Two processes with same `VHOST`?
+- **Conflict resolution**: Two processes with same `NAME`?
   - First one wins? Last one wins? Error?
 
 - **Process exit**: How quickly to detect and remove stale mappings?
 
 - **Dashboard**: Show current mappings at `_.localhost:9999` or `localhost:9999`?
 
-- **Fallback**: What if no `VHOST`? Ignore? Use `npm_package_name`? Use directory name?
+- **Fallback**: What if no `NAME`? Ignore? Use `npm_package_name`? Use directory name?
 
 ## Non-Goals (for now)
 
@@ -103,7 +103,7 @@ Options:
 localhost-world
 
 # Terminal 2: Start a service
-VHOST=myapp node -e "require('http').createServer((req,res) => res.end('hello')).listen(4567)"
+NAME=myapp node -e "require('http').createServer((req,res) => res.end('hello')).listen(4567)"
 
 # Terminal 3: Access it
 curl http://myapp.localhost:9999
