@@ -101,38 +101,28 @@ Connection: close\r
 <!DOCTYPE html>
 <html>
 <head>
-  <title>localhostess</title>
+  <title>localhome</title>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
     h1 { color: #333; }
-    .server { background: #f5f5f5; border-radius: 8px; padding: 16px; margin: 12px 0; }
-    .server a { color: #0066cc; font-size: 1.2em; font-weight: bold; }
-    .meta { color: #666; font-size: 0.9em; margin-top: 8px; }
+    .server { margin: 8px 0; }
+    .server a { color: #0066cc; font-size: 1.1em; }
     .empty { color: #999; font-style: italic; }
     code { background: #e8e8e8; padding: 2px 6px; border-radius: 4px; }
   </style>
 </head>
 <body>
-  <h1>localhostess (tcp mode)</h1>
-  <p>Routing <code>*.localhost:${listener.port}</code> to local services</p>
+  <h1>localhome</h1>
 `;
 
   if (servers.length === 0) {
     html += `
-  <p class="empty">No servers found with NAME env var.</p>
-  <p>Start a server with:</p>
-  <pre><code>NAME=myapp bun run server.ts</code></pre>
+  <p class="empty">No services found.</p>
+  <p>Start a server with: <code>NAME=myapp bun run server.ts</code></p>
 `;
   } else {
-    html += `<h2>Active Services</h2>`;
     for (const server of servers) {
-      html += `
-  <div class="server">
-    <a href="http://${server.name}.localhost:${listener.port}">${server.name}.localhost:${listener.port}</a>
-    <span>→ :${server.port}</span>
-    <div class="meta">PID ${server.pid} · ${server.command.slice(0, 60)}...</div>
-  </div>
-`;
+      html += `  <div class="server"><a href="http://${server.name}/">${server.name}/</a></div>\n`;
     }
   }
 
@@ -279,7 +269,7 @@ const listener = Bun.listen<SocketData>({
         socketData.subdomain = proxyTarget ?? extractSubdomain(socketData.host);
 
         // Dashboard request
-        if (!socketData.subdomain || socketData.subdomain === "_") {
+        if (!socketData.subdomain || socketData.subdomain === "_" || socketData.subdomain === "home") {
           if (actualPath === "/proxy.pac") {
             const pac = `HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nConnection: close\r\n\r\nfunction FindProxyForURL(url, host) {\n  if (host.indexOf(".") === -1 && host !== "localhost") {\n    return "PROXY " + host + ".localhost:${listener.port}; DIRECT";\n  }\n  return "DIRECT";\n}\n`;
             socket.write(pac);

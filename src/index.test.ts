@@ -457,7 +457,25 @@ describe("dashboard & PAC", () => {
       `GET / HTTP/1.1\r\nHost: localhost:${daemonPort}\r\n\r\n`
     );
     expect(parseStatusCode(resp)).toBe(200);
-    expect(parseBody(resp)).toContain("localhostess");
+    expect(parseBody(resp)).toContain("localhome");
+  });
+
+  test("home.localhost serves dashboard (reverse proxy)", async () => {
+    const resp = await tcpRequest(
+      daemonPort,
+      `GET / HTTP/1.1\r\nHost: home.localhost:${daemonPort}\r\n\r\n`
+    );
+    expect(parseStatusCode(resp)).toBe(200);
+    expect(parseBody(resp)).toContain("localhome");
+  });
+
+  test("http://home/ serves dashboard (forward proxy)", async () => {
+    const resp = await tcpRequest(
+      daemonPort,
+      `GET http://home/ HTTP/1.1\r\nHost: home\r\n\r\n`
+    );
+    expect(parseStatusCode(resp)).toBe(200);
+    expect(parseBody(resp)).toContain("localhome");
   });
 
   test("PAC file serves valid JS", async () => {
