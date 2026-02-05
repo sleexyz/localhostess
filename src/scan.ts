@@ -92,15 +92,32 @@ async function findListeningPorts(): Promise<Map<number, number[]>> {
   return pidPorts;
 }
 
+const DEBUG_PORTS = new Set([9229, 9222, 5858]);
+const EPHEMERAL_PORT_MIN = 49152;
+
+/**
+ * Pick the best port from a list of candidates.
+ * Filter pipeline: remove debug ports, remove ephemeral ports, take lowest.
+ * Fallback: lowest from the original set.
+ */
+function pickPort(ports: number[]): number {
+  const filtered = ports
+    .filter((p) => !DEBUG_PORTS.has(p) && p < EPHEMERAL_PORT_MIN);
+  if (filtered.length > 0) return Math.min(...filtered);
+  return Math.min(...ports);
+}
+
 /**
  * Scan for servers with LOCALHOST_NAME env var
  */
 export async function scanServers(): Promise<Server[]> {
-  const servers: Server[] = [];
   const pidPorts = await findListeningPorts();
 
   const DEBUG = process.env.DEBUG === "1";
   if (DEBUG) console.log(`[scan] Found ${pidPorts.size} processes with listening ports`);
+
+  // First pass: collect entries grouped by NAME
+  const byName = new Map<string, { pid: number; ports: number[]; command: string }[]>();
 
   for (const [pid, ports] of pidPorts) {
     const env = await getProcessEnv(pid);
@@ -113,16 +130,20 @@ export async function scanServers(): Promise<Server[]> {
 
     if (name) {
       const command = await getProcessCommand(pid);
-      // Use the first port (or could expose all)
-      for (const port of ports) {
-        servers.push({
-          name,
-          port,
-          pid,
-          command: command.slice(0, 80),
-        });
-      }
+      const entries = byName.get(name) || [];
+      entries.push({ pid, ports, command: command.slice(0, 80) });
+      byName.set(name, entries);
     }
+  }
+
+  // Second pass: pick one port per name
+  const servers: Server[] = [];
+  for (const [name, entries] of byName) {
+    const allPorts = entries.flatMap((e) => e.ports);
+    const chosenPort = pickPort(allPorts);
+    // Use the pid/command of whichever entry owns the chosen port
+    const owner = entries.find((e) => e.ports.includes(chosenPort)) || entries[0];
+    servers.push({ name, port: chosenPort, pid: owner.pid, command: owner.command });
   }
 
   return servers;
@@ -134,14 +155,9 @@ export async function scanServers(): Promise<Server[]> {
 export async function buildMapping(): Promise<Map<string, number>> {
   const servers = await scanServers();
   const mapping = new Map<string, number>();
-
   for (const server of servers) {
-    if (!mapping.has(server.name)) {
-      mapping.set(server.name, server.port);
-    }
-    // TODO: handle conflicts (same name, different ports)
+    mapping.set(server.name, server.port);
   }
-
   return mapping;
 }
 
