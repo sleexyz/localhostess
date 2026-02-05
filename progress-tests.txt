@@ -1,0 +1,63 @@
+Session: tests
+Status: COMPLETE
+
+## Summary
+
+All 9 integration tests pass across all 4 proxy quadrants + edge cases.
+`bun test` runs in ~200ms, 5 consecutive runs 0 failures.
+
+## Files Changed
+
+- `src/index.ts` — Moved console.log after `Bun.listen`, added `LISTENING:${actualPort}` for test harness port discovery, fixed dashboard/PAC to use `listener.port` instead of `PORT` (supports PORT=0)
+- `src/test-backend.ts` — NEW: HTTP + WebSocket echo backend for tests, supports PORT=0
+- `src/index.test.ts` — NEW: 9 integration tests using raw TCP sockets
+
+## Test Matrix
+
+| Quadrant                    | Test                                        | Status |
+|-----------------------------|---------------------------------------------|--------|
+| Reverse proxy HTTP          | Routes by subdomain, proxies to backend     | PASS   |
+| Reverse proxy WebSocket     | Upgrade + echo with hand-crafted WS frames  | PASS   |
+| Forward proxy HTTP          | Absolute URI, Host rewriting verified        | PASS   |
+| Forward proxy CONNECT       | Bidirectional TCP tunnel                     | PASS   |
+| Unknown service (reverse)   | Returns 404                                 | PASS   |
+| Unknown service (forward)   | Closes connection silently                   | PASS   |
+| Unknown service (CONNECT)   | Closes connection silently                   | PASS   |
+| Dashboard                   | Serves HTML at root                          | PASS   |
+| PAC file                    | Serves valid JS with correct content-type    | PASS   |
+
+## Predictions Resolved
+
+- [✓] Bun's test runner can spawn child processes — needed `sh -c exec` workaround to avoid Bun killing "dangling processes"
+- [✓] WebSocket framing by hand — worked first try, just needed masking + proper frame encoding/decoding
+- [✓] Mapping cache race — `retryRequest` with 500ms delay handles the lsof+ps discovery lag
+
+## Key Learnings
+
+- Bun test runner kills all child processes it detects as "dangling" between test phases. Workaround: spawn via `sh -c "exec ..."` through `node:child_process` with `detached: true`
+- `Bun.listen` with `port: 0` returns a listener with `.port` set to the actual assigned port
+- No HTTP/WS libraries needed — raw TCP sockets + hand-crafted frames work cleanly for proxy testing
+
+## COMPLETE - 2026-02-05
+
+**What was accomplished:**
+- Created `src/test-backend.ts` — HTTP JSON + WebSocket echo backend (PORT=0 support)
+- Created `src/index.test.ts` — 9 integration tests covering full proxy matrix
+- Modified `src/index.ts` — LISTENING:${port} output, PORT=0 support via listener.port
+- All 9 tests pass reliably (5 consecutive runs, ~200ms each, 0 flakes)
+
+**Prediction review:**
+- Confirmed: "Bun's test runner can spawn child processes in beforeAll" — Yes, but needed `sh -c exec` workaround. The prediction flagged this as [guess] and it was the right call — Bun kills "dangling" child processes mid-test unless they're spawned through a shell exec with detached:true.
+- Violated: "WebSocket frame encoding/decoding by hand will be the trickiest part" — Actually worked on the first try. The real trickiest part was fighting Bun's dangling process killer, which took ~45 minutes of debugging.
+- Confirmed: "The localhostess mapping cache may cause a race" — Yes, retryRequest with 500ms delay handles it. In practice the retry fires 0-1 times in the first test then the cache is warm.
+
+**How to predict better:**
+- Weight "environment/tooling friction" higher than "algorithmic complexity" — the WS framing was straightforward but the test runner behavior was the actual blocker
+- When a prediction says [guess], immediately design a fallback plan before starting (e.g., "if Bun kills child processes, try sh -c exec")
+- Check for running launchd services before debugging "leaked processes" — wasted time thinking afterAll cleanup was broken when it was actually the production daemon
+
+**Key insights:**
+- Bun test runner aggressively kills child processes it considers "dangling" — even those spawned via node:child_process. The kill happens between beforeAll completion and first test execution. Only `sh -c "exec ..."` with `detached: true` survives.
+- `process.kill(-pid, signal)` (negative PID for process group) doesn't reliably work for cleanup; direct `process.kill(pid, "SIGKILL")` is more reliable
+- The `listener` variable from `Bun.listen` can be referenced in closures defined before it (like `renderDashboard`) because those closures only execute at runtime after the assignment
+---

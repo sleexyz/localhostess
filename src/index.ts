@@ -111,7 +111,7 @@ Connection: close\r
 </head>
 <body>
   <h1>localhostess (tcp mode)</h1>
-  <p>Routing <code>*.localhost:${PORT}</code> to local services</p>
+  <p>Routing <code>*.localhost:${listener.port}</code> to local services</p>
 `;
 
   if (servers.length === 0) {
@@ -125,7 +125,7 @@ Connection: close\r
     for (const server of servers) {
       html += `
   <div class="server">
-    <a href="http://${server.name}.localhost:${PORT}">${server.name}.localhost:${PORT}</a>
+    <a href="http://${server.name}.localhost:${listener.port}">${server.name}.localhost:${listener.port}</a>
     <span>→ :${server.port}</span>
     <div class="meta">PID ${server.pid} · ${server.command.slice(0, 60)}...</div>
   </div>
@@ -140,11 +140,7 @@ Connection: close\r
   return html;
 }
 
-console.log(`localhostess (tcp mode) listening on http://localhost:${PORT}`);
-console.log(`Dashboard: http://localhost:${PORT}`);
-console.log(`\nStart services with: NAME=myapp bun run server.ts`);
-
-Bun.listen<SocketData>({
+const listener = Bun.listen<SocketData>({
   hostname: "0.0.0.0",
   port: PORT,
 
@@ -256,7 +252,7 @@ Bun.listen<SocketData>({
         // Dashboard request
         if (!socketData.subdomain || socketData.subdomain === "_") {
           if (actualPath === "/proxy.pac") {
-            const pac = `HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nConnection: close\r\n\r\nfunction FindProxyForURL(url, host) {\n  if (host.indexOf(".") === -1 && host !== "localhost") {\n    return "PROXY " + host + ".localhost:${PORT}; DIRECT";\n  }\n  return "DIRECT";\n}\n`;
+            const pac = `HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nConnection: close\r\n\r\nfunction FindProxyForURL(url, host) {\n  if (host.indexOf(".") === -1 && host !== "localhost") {\n    return "PROXY " + host + ".localhost:${listener.port}; DIRECT";\n  }\n  return "DIRECT";\n}\n`;
             socket.write(pac);
             socket.end();
             return;
@@ -439,3 +435,9 @@ Bun.listen<SocketData>({
     },
   },
 });
+
+const actualPort = listener.port;
+console.log(`LISTENING:${actualPort}`);
+console.log(`localhostess (tcp mode) listening on http://localhost:${actualPort}`);
+console.log(`Dashboard: http://localhost:${actualPort}`);
+console.log(`\nStart services with: NAME=myapp bun run server.ts`);
