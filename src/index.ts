@@ -169,13 +169,16 @@ const listener = Bun.listen<SocketData>({
 
       // If we already have a backend connection, just forward data
       if (socketData.backend) {
-        // Rewrite Host header on the first chunk through a CONNECT tunnel
-        // so backends (Vite etc.) don't reject the unfamiliar hostname
+        // Rewrite Host + Origin headers on the first chunk through a CONNECT tunnel
+        // so backends (Vite, code-server, etc.) don't reject the unfamiliar hostname
         if (socketData.backend.data.rewriteHost) {
           const newHost = socketData.backend.data.rewriteHost;
           socketData.backend.data.rewriteHost = undefined;
           const str = Buffer.isBuffer(data) ? data.toString("utf8") : new TextDecoder().decode(data);
-          socketData.backend.write(str.replace(/^Host: .+$/m, `Host: ${newHost}`));
+          const rewritten = str
+            .replace(/^Host: .+$/m, `Host: ${newHost}`)
+            .replace(/^Origin: .+$/m, `Origin: http://${newHost}`);
+          socketData.backend.write(rewritten);
           return;
         }
         socketData.backend.write(data);
@@ -309,7 +312,7 @@ const listener = Bun.listen<SocketData>({
           // WebSocket upgrade - do TCP-level proxying
           console.log(`[tcp] WebSocket upgrade ${socketData.subdomain} -> :${socketData.targetPort}`);
 
-          // Rewrite request for backend: absolute URI → relative path, fix Host header
+          // Rewrite request for backend: absolute URI → relative path, fix Host + Origin
           if (proxyTarget) {
             let rawStr = socketData.buffer.toString("utf8");
             rawStr = rawStr.replace(
@@ -319,6 +322,10 @@ const listener = Bun.listen<SocketData>({
             rawStr = rawStr.replace(
               /^Host: .+$/m,
               `Host: localhost:${socketData.targetPort}`
+            );
+            rawStr = rawStr.replace(
+              /^Origin: .+$/m,
+              `Origin: http://localhost:${socketData.targetPort}`
             );
             socketData.buffer = Buffer.from(rawStr);
           }

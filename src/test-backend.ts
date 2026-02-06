@@ -11,8 +11,17 @@ const NAME = process.env.NAME || "testapp";
 const server = Bun.serve({
   port: PORT,
   fetch(req, server) {
-    if (server.upgrade(req)) return undefined;
+    const upgradeData = { host: req.headers.get("host"), origin: req.headers.get("origin") };
+    if (server.upgrade(req, { data: upgradeData })) return undefined;
     const url = new URL(req.url);
+    // /gzipped — return gzip-compressed JSON with Content-Encoding header
+    if (url.pathname === "/gzipped") {
+      const json = JSON.stringify({ compressed: true, name: NAME });
+      const body = Bun.gzipSync(Buffer.from(json));
+      return new Response(body, {
+        headers: { "content-type": "application/json", "content-encoding": "gzip" },
+      });
+    }
     // /big?n=<bytes> — return a known repeating pattern of that size
     if (url.pathname === "/big") {
       const n = parseInt(url.searchParams.get("n") || "262144", 10);
@@ -25,11 +34,15 @@ const server = Bun.serve({
     return Response.json({
       name: NAME,
       path: url.pathname,
-      headers: { host: req.headers.get("host") },
+      headers: { host: req.headers.get("host"), origin: req.headers.get("origin") },
     });
   },
   websocket: {
     message(ws, message) {
+      if (message === "HEADERS") {
+        ws.send(JSON.stringify(ws.data));
+        return;
+      }
       ws.send(message);
     },
   },

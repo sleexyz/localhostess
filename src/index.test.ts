@@ -430,6 +430,101 @@ describe("forward proxy", () => {
     sock.destroy();
   });
 
+  test("HTTP — strips content-encoding from proxied response", async () => {
+    const resp = await retryRequest(
+      () =>
+        tcpRequest(
+          daemonPort,
+          `GET http://testapp/gzipped HTTP/1.1\r\nHost: testapp\r\n\r\n`
+        ),
+      (r) => parseStatusCode(r) === 200
+    );
+
+    expect(parseStatusCode(resp)).toBe(200);
+    const headers = parseHeaders(resp);
+    // fetch() decompresses the body, so content-encoding must be stripped
+    expect(headers.has("content-encoding")).toBe(false);
+    const body = JSON.parse(parseBody(resp));
+    expect(body.compressed).toBe(true);
+  });
+
+  test("CONNECT tunnel — rewrites Origin header", async () => {
+    const sock = await tcpConnect(daemonPort);
+
+    sock.write(`CONNECT testapp:80 HTTP/1.1\r\n\r\n`);
+    const connectResp = await collectUntil(sock, (buf) =>
+      buf.toString("utf8").includes("\r\n\r\n")
+    );
+    expect(connectResp.toString("utf8")).toContain("200 Connection Established");
+
+    // Send request with Origin through the tunnel
+    sock.write(
+      `GET / HTTP/1.1\r\nHost: testapp\r\nOrigin: http://testapp\r\nConnection: close\r\n\r\n`
+    );
+
+    const tunnelResp = await collectUntil(
+      sock,
+      (buf) => {
+        const str = buf.toString("utf8");
+        return str.includes("\r\n\r\n") && str.includes("}");
+      },
+      5000
+    );
+
+    expect(parseStatusCode(tunnelResp)).toBe(200);
+    const body = JSON.parse(parseBody(tunnelResp));
+    // Both Host and Origin should be rewritten to match the backend
+    expect(body.headers.host).toBe(`localhost:${backendPort}`);
+    expect(body.headers.origin).toBe(`http://localhost:${backendPort}`);
+
+    sock.destroy();
+  });
+
+  test("WebSocket forward proxy — rewrites Origin header", async () => {
+    const sock = await tcpConnect(daemonPort);
+    const key = randomBytes(16).toString("base64");
+
+    // WebSocket upgrade via forward proxy (absolute URI) with Origin
+    await retryRequest(
+      async () => {
+        sock.write(
+          `GET http://testapp/ HTTP/1.1\r\n` +
+          `Host: testapp\r\n` +
+          `Origin: http://testapp\r\n` +
+          `Upgrade: websocket\r\n` +
+          `Connection: Upgrade\r\n` +
+          `Sec-WebSocket-Key: ${key}\r\n` +
+          `Sec-WebSocket-Version: 13\r\n` +
+          `\r\n`
+        );
+        return await collectUntil(sock, (buf) =>
+          buf.toString("utf8").includes("\r\n\r\n")
+        );
+      },
+      (r) => parseStatusCode(r) === 101
+    );
+
+    // Ask the backend what headers it received during upgrade
+    sock.write(encodeWsFrame("HEADERS"));
+
+    const frameData = await collectUntil(
+      sock,
+      (buf) => {
+        const frame = decodeWsFrame(buf);
+        return frame !== null && frame.payload.length > 0;
+      },
+      3000
+    );
+
+    const decoded = decodeWsFrame(frameData);
+    expect(decoded).not.toBeNull();
+    const wsHeaders = JSON.parse(decoded!.payload);
+    expect(wsHeaders.host).toBe(`localhost:${backendPort}`);
+    expect(wsHeaders.origin).toBe(`http://localhost:${backendPort}`);
+
+    sock.destroy();
+  });
+
   test("unknown service closes connection (forward proxy)", async () => {
     const resp = await tcpRequest(
       daemonPort,
