@@ -91,6 +91,12 @@ No manual HTTP parsing, no backpressure handling, no keep-alive management, no c
 ### WebSocket proxying via `new WebSocket()` with custom headers
 Bun's `WebSocket` constructor accepts a second options argument with `headers` — used to set `host` and `origin` for the backend connection. This replaces the raw TCP piping approach from B2.
 
+### Bun.serve fetch handler strips content-length automatically
+When returning `new Response(await resp.arrayBuffer(), { ... })`, Bun.serve recalculates `Content-Length` from the actual body. No need to manually compute or set it — just strip the upstream `content-length` (which may be wrong after decompression) and let Bun handle it.
+
+### The CONNECT bridge timing is inherently safe
+Unlike the spike (where the bridge listener's `open` races with incoming data), the production CONNECT handler only sends `200 Connection Established` inside the bridge's `onOpen` callback. The browser doesn't start TLS until it receives the 200, so the TLS ClientHello never arrives before the bridge is connected. This means no buffering is needed in the production bridge — a non-obvious correctness property.
+
 ---
 
 ## Tasks

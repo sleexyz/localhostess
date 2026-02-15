@@ -69,8 +69,23 @@ just logs       # Tail logs
 just scan       # Show discovered servers
 ```
 
+## HTTPS Support
+
+localhome can MITM HTTPS so `https://app/` works with local dev servers that only speak plain HTTP.
+
+```bash
+# One-time setup
+brew install mkcert
+mkcert -install        # creates a local CA and trusts it in your system keychain
+```
+
+Restart the daemon after installing. You should see `[certs] Loaded mkcert CA from ...` in the output. After that, `https://app/` just works — localhome generates a cert on the fly for each hostname, signed by mkcert's local CA.
+
+If mkcert isn't installed, HTTPS is silently disabled and everything else works as before.
+
 ## Requirements
 
 - macOS
 - Bun
 - Chrome (for bare hostname routing via extension)
+- mkcert (optional, for HTTPS support)
