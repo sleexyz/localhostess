@@ -112,9 +112,23 @@ type TlsWsData = {
   backendWs: WebSocket | null;
   backendReady: boolean;
   pendingMessages: (string | ArrayBuffer | Uint8Array)[];
+  requestPath: string; // original path + query (e.g. "/?token=abc")
+  protocols: string[]; // WebSocket subprotocols (e.g. ["vite-hmr"])
 };
 
 const tlsServers = new Map<string, { port: number; server: Server }>();
+
+/** Drain a ReadableStream to completion, discarding data. Prevents RST on upstream connections. */
+async function drainBody(body: ReadableStream | null) {
+  if (!body) return;
+  try {
+    const reader = body.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+  } catch {}
+}
 
 async function getOrCreateTlsListener(
   hostname: string
@@ -193,6 +207,12 @@ async function getOrCreateTlsListener(
         req.headers.get("upgrade")?.toLowerCase() === "websocket" &&
         req.headers.get("connection")?.toLowerCase()?.includes("upgrade")
       ) {
+        const protocols = (
+          req.headers.get("sec-websocket-protocol") || ""
+        )
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
         const upgraded = server.upgrade<TlsWsData>(req, {
           data: {
             hostname,
@@ -200,6 +220,8 @@ async function getOrCreateTlsListener(
             backendWs: null,
             backendReady: false,
             pendingMessages: [],
+            requestPath: url.pathname + url.search,
+            protocols,
           },
         });
         if (upgraded) return undefined;
@@ -219,6 +241,8 @@ async function getOrCreateTlsListener(
       fetchHeaders.delete("if-modified-since");
       // Rewrite Host for backend
       fetchHeaders.set("host", `localhost:${targetPort}`);
+      // Disable keep-alive to prevent RST on pooled connections
+      fetchHeaders.set("connection", "close");
 
       try {
         const resp = await fetch(backendUrl, {
@@ -229,19 +253,58 @@ async function getOrCreateTlsListener(
           redirect: "manual",
         });
 
-        // Build response, stripping content-encoding (fetch auto-decompresses)
+        // Build response, stripping hop-by-hop and encoding headers
         const respHeaders = new Headers();
         for (const [key, value] of resp.headers) {
+          const lk = key.toLowerCase();
           if (
-            !["content-encoding", "transfer-encoding", "content-length"].includes(
-              key.toLowerCase()
-            )
+            !["content-encoding", "transfer-encoding"].includes(lk) &&
+            !HOP_BY_HOP_TLS.includes(lk)
           ) {
             respHeaders.set(key, value);
           }
         }
 
-        return new Response(await resp.arrayBuffer(), {
+        // Wrap response body: if browser disconnects mid-stream, drain
+        // the upstream instead of aborting (which sends RST to the backend)
+        const upstream = resp.body;
+        if (!upstream) {
+          return new Response(null, {
+            status: resp.status,
+            statusText: resp.statusText,
+            headers: respHeaders,
+          });
+        }
+
+        const reader = upstream.getReader();
+        const body = new ReadableStream({
+          async pull(controller) {
+            try {
+              const { done, value } = await reader.read();
+              if (done) {
+                controller.close();
+                return;
+              }
+              controller.enqueue(value);
+            } catch {
+              controller.close();
+            }
+          },
+          cancel() {
+            // Browser disconnected — drain the rest of the upstream
+            // so the backend connection closes with FIN, not RST
+            (async () => {
+              try {
+                while (true) {
+                  const { done } = await reader.read();
+                  if (done) break;
+                }
+              } catch {}
+            })();
+          },
+        });
+
+        return new Response(body, {
           status: resp.status,
           statusText: resp.statusText,
           headers: respHeaders,
@@ -253,14 +316,18 @@ async function getOrCreateTlsListener(
 
     websocket: {
       open(ws) {
-        const { targetPort } = ws.data;
-        const backendUrl = `ws://localhost:${targetPort}/`;
-        const backendWs = new WebSocket(backendUrl, {
-          headers: {
-            host: `localhost:${targetPort}`,
-            origin: `http://localhost:${targetPort}`,
-          },
-        } as any);
+        const { targetPort, requestPath, protocols } = ws.data;
+        const backendUrl = `ws://localhost:${targetPort}${requestPath}`;
+        const backendWs = new WebSocket(
+          backendUrl,
+          protocols.length > 0 ? protocols : [],
+          {
+            headers: {
+              host: `localhost:${targetPort}`,
+              origin: `http://localhost:${targetPort}`,
+            },
+          } as any
+        );
 
         ws.data.backendWs = backendWs;
 
@@ -292,6 +359,13 @@ async function getOrCreateTlsListener(
             ws.close();
           } catch {}
         });
+
+        backendWs.addEventListener("error", () => {
+          // Swallow errors on backend WS to prevent unhandled exceptions
+          try {
+            ws.close();
+          } catch {}
+        });
       },
 
       message(ws, message) {
@@ -300,12 +374,23 @@ async function getOrCreateTlsListener(
           return;
         }
         const backendWs = ws.data.backendWs;
-        if (backendWs) backendWs.send(message);
+        if (backendWs && backendWs.readyState === WebSocket.OPEN) {
+          backendWs.send(message);
+        }
       },
 
       close(ws) {
+        const bws = ws.data.backendWs;
+        if (!bws) return;
         try {
-          ws.data.backendWs?.close();
+          if (bws.readyState === WebSocket.OPEN) {
+            bws.close(1000, "client disconnected");
+          } else if (bws.readyState === WebSocket.CONNECTING) {
+            // Not open yet — close as soon as it opens
+            bws.addEventListener("open", () => {
+              bws.close(1000, "client disconnected");
+            });
+          }
         } catch {}
       },
     },

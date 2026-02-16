@@ -166,6 +166,8 @@ export async function proxyHttpRequest(
   if (opts.rewriteHost) {
     fetchHeaders.set("host", `localhost:${opts.targetPort}`);
   }
+  // Disable keep-alive to prevent RST on pooled connections
+  fetchHeaders.set("connection", "close");
 
   try {
     const response = await fetch(url, {
